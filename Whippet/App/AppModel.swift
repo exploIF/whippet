@@ -1,5 +1,6 @@
 import Foundation
 import Observation
+import AppKit
 import SwiftUI
 
 struct CategoryGroup: Identifiable {
@@ -7,6 +8,13 @@ struct CategoryGroup: Identifiable {
     let items: [ScanItem]
     var id: CleanupCategory { category }
     var totalSize: Int64 { items.reduce(0) { $0 + $1.size } }
+}
+
+enum Screen: Equatable {
+    case results
+    case confirm
+    case cleaning(done: Int, total: Int)
+    case report
 }
 
 @Observable
@@ -25,7 +33,18 @@ final class AppModel {
     /// Folders scanned for project artifacts. Hard-coded defaults until the Settings window exists.
     var projectRoots: [URL] = AppModel.suggestedProjectRoots()
 
+    private(set) var screen: Screen = .results
+    private(set) var lastReport: CleanupReport?
+    /// Items shown on the confirmation screen, captured when it opens.
+    private(set) var pendingCleanup: [ScanItem] = []
+
     private var scanTask: Task<Void, Never>?
+    /// Replaced in tests so nothing is moved to the real Trash.
+    var makeCleaner: @MainActor (_ projectRoots: [URL]) -> Cleaner = { Cleaner.standard(projectRoots: $0) }
+    /// Returns bundle IDs of running apps. Replaced in tests.
+    var runningBundleIDs: @MainActor () -> Set<String> = {
+        Set(NSWorkspace.shared.runningApplications.compactMap(\.bundleIdentifier))
+    }
 
     // MARK: - Derived state
 
@@ -71,10 +90,68 @@ final class AppModel {
         }
     }
 
+    // MARK: - Cleanup
+
+    func reviewCleanup() {
+        pendingCleanup = selectedItems
+        guard !pendingCleanup.isEmpty, !isScanning else { return }
+        screen = .confirm
+    }
+
+    func cancelCleanup() {
+        pendingCleanup = []
+        screen = .results
+    }
+
+    var pendingSize: Int64 { pendingCleanup.reduce(0) { $0 + $1.size } }
+
+    /// Warnings about tools that may be using the selected data right now.
+    var runningToolWarnings: [String] {
+        let running = runningBundleIDs()
+        let categories = Set(pendingCleanup.map(\.rule.category))
+        var warnings: [String] = []
+        if categories.contains(.xcode), running.contains("com.apple.dt.Xcode") {
+            warnings.append("Xcode is running. Quit it first so it doesn't recreate or lock files while they're moved.")
+        }
+        let androidStudio = running.contains { $0.hasPrefix("com.google.android.studio") }
+        if categories.contains(.android), androidStudio {
+            warnings.append("Android Studio is running. Quit it first; Gradle daemons may be using these caches.")
+        }
+        return warnings
+    }
+
+    func performCleanup() async {
+        let items = pendingCleanup
+        guard !items.isEmpty else { return }
+        screen = .cleaning(done: 0, total: items.count)
+
+        let cleaner = makeCleaner(projectRoots)
+        let report = await Task.detached(priority: .userInitiated) {
+            await cleaner.clean(items) { done in
+                await MainActor.run { [weak self] in
+                    self?.screen = .cleaning(done: done, total: items.count)
+                }
+            }
+        }.value
+
+        let removed = Set(report.trashed.map(\.id))
+        self.items.removeAll { removed.contains($0.id) }
+        selection.subtract(removed)
+        pendingCleanup = []
+        lastReport = report
+        screen = .report
+    }
+
+    func dismissReport() {
+        lastReport = nil
+        screen = .results
+    }
+
     // MARK: - Scanning
 
     func startScan() {
         scanTask?.cancel()
+        screen = .results
         items = []
         selection = []
         isScanning = true

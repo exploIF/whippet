@@ -6,27 +6,44 @@ struct MenuContentView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             header
-            scanControls
 
-            if !model.items.isEmpty {
-                filterBar
+            switch model.screen {
+            case .confirm, .cleaning:
                 Divider()
-                results
+                ConfirmCleanView()
+            case .report:
                 Divider()
-                selectionSummary
-            } else if !model.isScanning, model.lastScanDate != nil {
-                Text("Nothing to clean up.")
-                    .foregroundStyle(.secondary)
+                if let report = model.lastReport {
+                    CleanupResultView(report: report)
+                }
+            case .results:
+                resultsScreen
             }
-
-            Divider()
-            footer
         }
         .padding()
         .frame(width: 420)
     }
 
     // MARK: - Sections
+
+    @ViewBuilder
+    private var resultsScreen: some View {
+        scanControls
+
+        if !model.items.isEmpty {
+            filterBar
+            Divider()
+            results
+            Divider()
+            selectionSummary
+        } else if !model.isScanning, model.lastScanDate != nil {
+            Text("Nothing to clean up.")
+                .foregroundStyle(.secondary)
+        }
+
+        Divider()
+        footer
+    }
 
     private var header: some View {
         HStack {
@@ -123,6 +140,8 @@ struct MenuContentView: View {
             Text(count == 0 ? "Nothing selected" : "\(count) selected · \(model.selectedSize.fileSize)")
                 .monospacedDigit()
             Spacer()
+            Button("Review & Move to Trash…") { model.reviewCleanup() }
+                .disabled(count == 0 || model.isScanning)
         }
         .font(.callout)
     }

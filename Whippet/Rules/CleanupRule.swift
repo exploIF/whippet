@@ -47,6 +47,14 @@ enum CleanupRisk: Int, CaseIterable, Sendable, Comparable {
         case .caution: "Caution"
         }
     }
+
+    var explanation: String {
+        switch self {
+        case .safe: "A pure cache. It's recreated automatically with little cost."
+        case .moderate: "Recreated automatically, but it can take a while or need a download."
+        case .caution: "May contain data that can't be regenerated."
+        }
+    }
 }
 
 /// Describes a directory inside a project that can be removed, e.g. `node_modules` next to `package.json`.
