@@ -15,19 +15,26 @@ git clone https://github.com/exploIF/whippet.git
 cd whippet
 ```
 
-Then either open it in Xcode and press Run:
+Then build and install it into `/Applications`:
+
+```sh
+scripts/install.sh
+```
+
+The script builds a Release copy, quits Whippet if it's running, replaces
+`/Applications/Whippet.app` and launches it. Pass `--no-open` to skip launching.
+Run it again after pulling changes to update.
+
+To work on the code instead, open the project in Xcode and press Run:
 
 ```sh
 open Whippet.xcodeproj
 ```
 
-or build from the command line and install it:
-
-```sh
-xcodebuild -scheme Whippet -configuration Release -derivedDataPath build build
-cp -R build/Build/Products/Release/Whippet.app /Applications/
-open /Applications/Whippet.app
-```
+`scripts/install.sh` also sets this project's Xcode build location to
+`build/DerivedData.noindex` (a per-user setting, only if you haven't chosen one).
+Spotlight skips `.noindex` folders, so only the copy in `/Applications` shows up in
+Spotlight and Launchpad.
 
 Whippet has no Dock icon — look for the whippet in the menu bar.
 
@@ -36,5 +43,5 @@ The app is ad-hoc signed when built locally, so Gatekeeper won't block it on the
 ## Tests
 
 ```sh
-xcodebuild -scheme Whippet test
+xcodebuild -scheme Whippet -derivedDataPath build/DerivedData.noindex/Whippet test
 ```
