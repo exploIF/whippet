@@ -6,6 +6,7 @@ enum CleanupError: LocalizedError, Equatable {
     case notADirectory
     case outsideAllowedLocations
     case protectedLocation
+    case excluded
     case doesNotMatchRule
     case trashFailed(String)
 
@@ -16,6 +17,7 @@ enum CleanupError: LocalizedError, Equatable {
         case .notADirectory: "It's no longer a folder."
         case .outsideAllowedLocations: "It's outside your home and temporary folders."
         case .protectedLocation: "It's a project folder or contains one."
+        case .excluded: "It's inside a folder excluded in Settings."
         case .doesNotMatchRule: "Its name no longer matches the rule it was found by."
         case .trashFailed(let message): message
         }
@@ -40,19 +42,22 @@ struct Cleaner: Sendable {
     var allowedRoots: [URL]
     /// Never removed, and nothing that contains them is removed either (e.g. project roots).
     var protectedPaths: [URL]
+    /// Nothing inside these folders is removed.
+    var excludedPaths: [URL] = []
     /// Moves a URL to the Trash. Replaced in tests.
     var moveToTrash: @Sendable (URL) throws -> Void = { url in
         try FileManager.default.trashItem(at: url, resultingItemURL: nil)
     }
 
-    static func standard(projectRoots: [URL]) -> Cleaner {
+    static func standard(projectRoots: [URL], exclusions: [URL] = []) -> Cleaner {
         let home = FileManager.default.homeDirectoryForCurrentUser
         let tmp = URL(fileURLWithPath: NSTemporaryDirectory(), isDirectory: true)
         let important = ["Desktop", "Documents", "Downloads", "Library", "Developer", ".gradle", ".npm", ".android"]
             .map { home.appendingPathComponent($0) }
         return Cleaner(
             allowedRoots: [home, tmp],
-            protectedPaths: [home, tmp] + important + projectRoots
+            protectedPaths: [home, tmp] + important + projectRoots,
+            excludedPaths: exclusions
         )
     }
 
@@ -69,6 +74,12 @@ struct Cleaner: Sendable {
         let allowed = allowedRoots.map(ProjectWalker.canonicalPath)
         guard allowed.contains(where: { path.hasPrefix($0 + "/") }) else {
             throw .outsideAllowedLocations
+        }
+
+        for excluded in excludedPaths.map(ProjectWalker.canonicalPath) {
+            if path == excluded || path.hasPrefix(excluded + "/") || excluded.hasPrefix(path + "/") {
+                throw .excluded
+            }
         }
 
         // Refuse the protected folders themselves, and any folder that contains one.

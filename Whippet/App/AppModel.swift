@@ -30,8 +30,14 @@ final class AppModel {
     var selection: Set<ScanItem.ID> = []
     var expandedCategories: Set<CleanupCategory> = []
 
-    /// Folders scanned for project artifacts. Hard-coded defaults until the Settings window exists.
-    var projectRoots: [URL] = AppModel.suggestedProjectRoots()
+    let settings: SettingsStore
+
+    /// Folders scanned for project artifacts.
+    var projectRoots: [URL] { settings.projectRoots }
+
+    init(settings: SettingsStore = SettingsStore()) {
+        self.settings = settings
+    }
 
     private(set) var screen: Screen = .results
     private(set) var lastReport: CleanupReport?
@@ -40,7 +46,9 @@ final class AppModel {
 
     private var scanTask: Task<Void, Never>?
     /// Replaced in tests so nothing is moved to the real Trash.
-    var makeCleaner: @MainActor (_ projectRoots: [URL]) -> Cleaner = { Cleaner.standard(projectRoots: $0) }
+    var makeCleaner: @MainActor (SettingsStore) -> Cleaner = {
+        Cleaner.standard(projectRoots: $0.projectRoots, exclusions: $0.exclusions)
+    }
     /// Returns bundle IDs of running apps. Replaced in tests.
     var runningBundleIDs: @MainActor () -> Set<String> = {
         Set(NSWorkspace.shared.runningApplications.compactMap(\.bundleIdentifier))
@@ -125,7 +133,7 @@ final class AppModel {
         guard !items.isEmpty else { return }
         screen = .cleaning(done: 0, total: items.count)
 
-        let cleaner = makeCleaner(projectRoots)
+        let cleaner = makeCleaner(settings)
         let report = await Task.detached(priority: .userInitiated) {
             await cleaner.clean(items) { done in
                 await MainActor.run { [weak self] in
@@ -158,8 +166,9 @@ final class AppModel {
         status = nil
 
         let configuration = ScanConfiguration(
-            rules: RuleCatalog.all.filter(\.isEnabledByDefault),
-            projectRoots: projectRoots
+            rules: settings.enabledRules,
+            projectRoots: settings.projectRoots,
+            exclusions: settings.exclusions
         )
         let scanner = ArtifactScanner(configuration: configuration)
 

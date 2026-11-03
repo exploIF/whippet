@@ -2,6 +2,7 @@ import SwiftUI
 
 struct MenuContentView: View {
     @Environment(AppModel.self) private var model
+    @Environment(\.openSettings) private var openSettings
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -154,6 +155,15 @@ struct MenuContentView: View {
                 .lineLimit(2)
                 .help(model.projectRoots.map(\.path).joined(separator: "\n"))
             Spacer()
+            Button {
+                // Menu bar apps aren't active, so bring the Settings window to the front.
+                NSApplication.shared.activate()
+                openSettings()
+            } label: {
+                Image(systemName: "gearshape")
+            }
+            .help("Settings")
+            .keyboardShortcut(",")
             Button("Quit") { NSApplication.shared.terminate(nil) }
                 .keyboardShortcut("q")
         }

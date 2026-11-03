@@ -76,9 +76,15 @@ struct ArtifactScanner: Sendable {
     // MARK: - Global locations
 
     func globalCandidates() -> [ScanCandidate] {
-        configuration.rules.flatMap { rule -> [ScanCandidate] in
+        let excluded = configuration.exclusions.map(ProjectWalker.canonicalPath)
+        return configuration.rules.flatMap { rule -> [ScanCandidate] in
             guard let pattern = rule.globalPath else { return [] }
-            return expand(pattern).map { ScanCandidate(url: $0, rule: rule, projectName: nil) }
+            return expand(pattern)
+                .filter { url in
+                    let path = ProjectWalker.canonicalPath(url)
+                    return !excluded.contains { path == $0 || path.hasPrefix($0 + "/") }
+                }
+                .map { ScanCandidate(url: $0, rule: rule, projectName: nil) }
         }
     }
 
