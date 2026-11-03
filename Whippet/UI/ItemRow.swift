@@ -4,6 +4,7 @@ import SwiftUI
 struct ItemRow: View {
     @Environment(AppModel.self) private var model
     let item: ScanItem
+    @State private var showingImpact = false
 
     var body: some View {
         let selected = model.isSelected(item)
@@ -22,6 +23,16 @@ struct ItemRow: View {
                     Spacer(minLength: 4)
                     Text(item.size.fileSize)
                         .monospacedDigit()
+                    Button {
+                        showingImpact.toggle()
+                    } label: {
+                        Image(systemName: "info.circle")
+                    }
+                    .buttonStyle(.borderless)
+                    .help("What happens if I remove this?")
+                    .popover(isPresented: $showingImpact, arrowEdge: .trailing) {
+                        ImpactPopover(item: item)
+                    }
                 }
                 HStack(spacing: 6) {
                     Text(item.url.tildePath)
