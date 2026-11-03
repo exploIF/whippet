@@ -1,0 +1,10 @@
+# IDE
+.idea/
+xcuserdata/
+
+# Build
+build/
+DerivedData/
+
+# macOS
+.DS_Store
