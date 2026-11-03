@@ -9,16 +9,11 @@ struct MenuContentView: View {
             scanControls
 
             if !model.items.isEmpty {
+                filterBar
                 Divider()
-                ScrollView {
-                    LazyVStack(alignment: .leading, spacing: 10) {
-                        ForEach(model.items) { item in
-                            RawItemRow(item: item)
-                        }
-                    }
-                    .padding(.vertical, 2)
-                }
-                .frame(maxHeight: 420)
+                results
+                Divider()
+                selectionSummary
             } else if !model.isScanning, model.lastScanDate != nil {
                 Text("Nothing to clean up.")
                     .foregroundStyle(.secondary)
@@ -28,8 +23,10 @@ struct MenuContentView: View {
             footer
         }
         .padding()
-        .frame(width: 400)
+        .frame(width: 420)
     }
+
+    // MARK: - Sections
 
     private var header: some View {
         HStack {
@@ -39,9 +36,10 @@ struct MenuContentView: View {
             VStack(alignment: .leading) {
                 Text("Whippet").font(.headline)
                 if !model.items.isEmpty {
-                    Text("\(model.totalSize.formatted(.byteCount(style: .file))) reclaimable")
+                    Text("\(model.visibleSize.fileSize) reclaimable")
                         .font(.caption)
                         .foregroundStyle(.secondary)
+                        .monospacedDigit()
                 }
             }
             Spacer()
@@ -68,11 +66,65 @@ struct MenuContentView: View {
                         .foregroundStyle(.secondary)
                 }
                 Spacer()
-                Button("Scan") { model.startScan() }
+                Button(model.lastScanDate == nil ? "Scan" : "Rescan") { model.startScan() }
                     .buttonStyle(.borderedProminent)
                     .keyboardShortcut(.defaultAction)
             }
         }
+    }
+
+    private var filterBar: some View {
+        @Bindable var model = model
+        return HStack(spacing: 8) {
+            Picker("Age", selection: $model.filter.age) {
+                ForEach(AgeFilter.allCases) { Text($0.title).tag($0) }
+            }
+            Picker("Size", selection: $model.filter.minimumSize) {
+                ForEach(SizeFilter.allCases) { Text($0.title).tag($0) }
+            }
+        }
+        .labelsHidden()
+        .pickerStyle(.menu)
+        .controlSize(.small)
+        .fixedSize()
+    }
+
+    @ViewBuilder
+    private var results: some View {
+        let groups = model.groups
+        if groups.isEmpty {
+            Text("No items match the filters.")
+                .foregroundStyle(.secondary)
+                .frame(maxWidth: .infinity, alignment: .center)
+                .padding(.vertical, 8)
+        } else {
+            ScrollView {
+                VStack(alignment: .leading, spacing: 12) {
+                    ForEach(groups) { group in
+                        CategorySection(group: group)
+                    }
+                }
+                .padding(.vertical, 2)
+                .padding(.trailing, 6)
+            }
+            .frame(maxHeight: 440)
+            .fixedSize(horizontal: false, vertical: true)
+        }
+        if model.hiddenCount > 0 {
+            Text("\(model.hiddenCount) items hidden by filters")
+                .font(.caption)
+                .foregroundStyle(.tertiary)
+        }
+    }
+
+    private var selectionSummary: some View {
+        let count = model.selectedItems.count
+        return HStack {
+            Text(count == 0 ? "Nothing selected" : "\(count) selected · \(model.selectedSize.fileSize)")
+                .monospacedDigit()
+            Spacer()
+        }
+        .font(.callout)
     }
 
     private var footer: some View {
@@ -89,38 +141,8 @@ struct MenuContentView: View {
     }
 
     private var rootsDescription: String {
-        let names = model.projectRoots.map { ($0.path as NSString).abbreviatingWithTildeInPath }
+        let names = model.projectRoots.map(\.tildePath)
         return names.isEmpty ? "No project folders found" : "Projects: " + names.joined(separator: ", ")
-    }
-}
-
-/// Temporary row used until the categorised UI lands.
-private struct RawItemRow: View {
-    let item: ScanItem
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 2) {
-            HStack(alignment: .firstTextBaseline) {
-                Text(item.rule.name).fontWeight(.medium)
-                if let project = item.projectName {
-                    Text(project).foregroundStyle(.secondary)
-                }
-                Spacer()
-                Text(item.size.formatted(.byteCount(style: .file)))
-                    .monospacedDigit()
-            }
-            HStack {
-                Text((item.url.path as NSString).abbreviatingWithTildeInPath)
-                    .lineLimit(1)
-                    .truncationMode(.middle)
-                Spacer()
-                if let date = item.lastModified {
-                    Text(date.formatted(.relative(presentation: .named)))
-                }
-            }
-            .font(.caption)
-            .foregroundStyle(.secondary)
-        }
     }
 }
 

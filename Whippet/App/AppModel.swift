@@ -1,5 +1,13 @@
 import Foundation
 import Observation
+import SwiftUI
+
+struct CategoryGroup: Identifiable {
+    let category: CleanupCategory
+    let items: [ScanItem]
+    var id: CleanupCategory { category }
+    var totalSize: Int64 { items.reduce(0) { $0 + $1.size } }
+}
 
 @Observable
 @MainActor
@@ -9,16 +17,66 @@ final class AppModel {
     private(set) var status: String?
     private(set) var lastScanDate: Date?
 
+    var filter = ScanFilter()
+    /// IDs of selected items. Hidden (filtered out) items are never acted on, even if selected.
+    var selection: Set<ScanItem.ID> = []
+    var expandedCategories: Set<CleanupCategory> = []
+
     /// Folders scanned for project artifacts. Hard-coded defaults until the Settings window exists.
     var projectRoots: [URL] = AppModel.suggestedProjectRoots()
 
     private var scanTask: Task<Void, Never>?
 
-    var totalSize: Int64 { items.reduce(0) { $0 + $1.size } }
+    // MARK: - Derived state
+
+    var visibleItems: [ScanItem] {
+        let now = Date.now
+        return items.filter { filter.matches($0, now: now) }
+    }
+
+    var hiddenCount: Int { items.count - visibleItems.count }
+
+    var groups: [CategoryGroup] {
+        Dictionary(grouping: visibleItems, by: \.rule.category)
+            .map { CategoryGroup(category: $0.key, items: $0.value) }
+            .sorted { $0.totalSize > $1.totalSize }
+    }
+
+    var visibleSize: Int64 { visibleItems.reduce(0) { $0 + $1.size } }
+
+    var selectedItems: [ScanItem] { visibleItems.filter { selection.contains($0.id) } }
+
+    var selectedSize: Int64 { selectedItems.reduce(0) { $0 + $1.size } }
+
+    // MARK: - Selection
+
+    func isSelected(_ item: ScanItem) -> Bool { selection.contains(item.id) }
+
+    func setSelected(_ item: ScanItem, _ selected: Bool) {
+        if selected { selection.insert(item.id) } else { selection.remove(item.id) }
+    }
+
+    func selectionBinding(for item: ScanItem) -> Binding<Bool> {
+        Binding(
+            get: { self.selection.contains(item.id) },
+            set: { self.setSelected(item, $0) }
+        )
+    }
+
+    func toggleExpanded(_ category: CleanupCategory) {
+        if expandedCategories.contains(category) {
+            expandedCategories.remove(category)
+        } else {
+            expandedCategories.insert(category)
+        }
+    }
+
+    // MARK: - Scanning
 
     func startScan() {
         scanTask?.cancel()
         items = []
+        selection = []
         isScanning = true
         status = nil
 
@@ -34,7 +92,7 @@ final class AppModel {
                 case .status(let text):
                     status = text
                 case .item(let item):
-                    insertSorted(item)
+                    ingest(item)
                 case .finished:
                     lastScanDate = .now
                 }
@@ -51,10 +109,13 @@ final class AppModel {
         status = nil
     }
 
-    private func insertSorted(_ item: ScanItem) {
+    /// Adds a measured item, keeping items sorted by size. Nothing is selected automatically.
+    func ingest(_ item: ScanItem) {
         let index = items.firstIndex { $0.size < item.size } ?? items.endIndex
         items.insert(item, at: index)
     }
+
+    // MARK: - Defaults
 
     /// Common development folders that exist in the user's home folder.
     static func suggestedProjectRoots(home: URL = FileManager.default.homeDirectoryForCurrentUser) -> [URL] {
