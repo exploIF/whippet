@@ -17,13 +17,16 @@ struct CategoryHeader: View {
             .labelsHidden()
 
             Button {
-                withAnimation(.snappy(duration: 0.2)) { model.toggleExpanded(group.category) }
+                // Not wrapped in withAnimation: animating the row insertion resizes the
+                // scroll content every frame, which makes the scroll indicator flicker.
+                model.toggleExpanded(group.category)
             } label: {
                 HStack(spacing: 6) {
                     Image(systemName: "chevron.right")
                         .font(.caption.weight(.semibold))
                         .foregroundStyle(.secondary)
                         .rotationEffect(.degrees(expanded ? 90 : 0))
+                        .animation(.snappy(duration: 0.2), value: expanded)
                     Image(systemName: group.category.systemImage)
                         .frame(width: 16)
                     Text(group.category.title)
