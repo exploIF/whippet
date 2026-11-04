@@ -116,23 +116,45 @@ struct MenuContentView: View {
                 .frame(maxWidth: .infinity, alignment: .center)
                 .padding(.vertical, 8)
         } else {
+            // Rows are flattened into one LazyVStack so only on-screen rows are built.
+            // Short lists size to fit; long ones get a fixed height, because sizing a
+            // scroll view to its content would build every row anyway.
+            let tall = estimatedListHeight(groups) > Self.maxListHeight
             ScrollView {
-                VStack(alignment: .leading, spacing: 12) {
+                LazyVStack(alignment: .leading, spacing: 10) {
                     ForEach(groups) { group in
-                        CategorySection(group: group)
+                        CategoryHeader(group: group)
+                            .padding(.top, group.id == groups.first?.id ? 0 : 4)
+                        if model.expandedCategories.contains(group.category) {
+                            ForEach(group.items) { item in
+                                ItemRow(item: item)
+                                    .padding(.leading, 22)
+                            }
+                        }
                     }
                 }
                 .padding(.vertical, 2)
                 .padding(.trailing, 6)
             }
-            .frame(maxHeight: 440)
-            .fixedSize(horizontal: false, vertical: true)
+            .frame(height: tall ? Self.maxListHeight : nil)
+            .frame(maxHeight: Self.maxListHeight)
+            .fixedSize(horizontal: false, vertical: !tall)
         }
         if model.hiddenCount > 0 {
             Text("\(model.hiddenCount) items hidden by filters")
                 .font(.caption)
                 .foregroundStyle(.tertiary)
         }
+    }
+
+    private static let maxListHeight: CGFloat = 440
+
+    /// Rough height of the list, used only to decide whether it needs to scroll.
+    private func estimatedListHeight(_ groups: [CategoryGroup]) -> CGFloat {
+        let rows = groups
+            .filter { model.expandedCategories.contains($0.category) }
+            .reduce(0) { $0 + $1.items.count }
+        return CGFloat(groups.count) * 34 + CGFloat(rows) * 42
     }
 
     private var selectionSummary: some View {
